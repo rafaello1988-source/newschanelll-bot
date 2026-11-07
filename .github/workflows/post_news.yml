@@ -2,18 +2,24 @@ name: Пост новостей в канал
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # 09:00 по Москве (UTC+3)
-    - cron: '0 11 * * *'  # 14:00 по Москве (UTC+3)
-    - cron: '0 17 * * *'  # 20:00 по Москве (UTC+3)
-  workflow_dispatch: # Позволяет запускать вручную кнопкой
+    - cron: '0 6 * * *'   # 09:00 МСК
+    - cron: '0 11 * * *'  # 14:00 МСК
+    - cron: '0 17 * * *'  # 20:00 МСК
+  workflow_dispatch:
 
 jobs:
   post-news:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      # ВОТ ОНО: Магия кэша! Сохраняет и восстанавливает файл памяти
+      - name: Cache posted news
+        uses: actions/cache@v3
+        with:
+          path: posted_news.json
+          key: posted-news-memory-v1
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -23,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser python-telegram-bot
+          pip install feedparser python-telegram-bot==20.7
 
       - name: Run bot script
         env:
