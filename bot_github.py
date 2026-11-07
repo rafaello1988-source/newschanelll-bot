@@ -34,7 +34,7 @@ EN_FEEDS = [
     ("Wired AI", "https://www.wired.com/feed/tag/ai/latest/rss"),
 ]
 
-SIGNATURE = "\n\n🤖 Подписывайся: @newschanelll_ai"
+SIGNATURE = "\n\n🤖 Подписывайся: @neuro_baza_ai"
 
 def load_posted():
     if os.path.exists(POSTED_FILE):
