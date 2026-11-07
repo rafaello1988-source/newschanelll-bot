@@ -2,9 +2,9 @@ name: Пост новостей в канал
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # 09:00 МСК
-    - cron: '0 11 * * *'  # 14:00 МСК
-    - cron: '0 17 * * *'  # 20:00 МСК
+    - cron: '0 6 * * *'
+    - cron: '0 11 * * *'
+    - cron: '0 17 * * *'
   workflow_dispatch:
 
 jobs:
@@ -13,13 +13,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-
-      # ВОТ ОНО: Магия кэша! Сохраняет и восстанавливает файл памяти
-      - name: Cache posted news
-        uses: actions/cache@v3
-        with:
-          path: posted_news.json
-          key: posted-news-memory-v1
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -35,4 +28,5 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: python bot_github.py
