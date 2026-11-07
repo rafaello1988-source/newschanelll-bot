@@ -78,7 +78,7 @@ def translate_to_ru(text):
         log.warning(f"⚠️ Ошибка перевода: {e}")
         return text
 
-def format_post(title, summary, link, source, is_translated=False):
+def format_post(title, summary, link, source, translated=False):
     text = f"🔹 <b>{title}</b>\n\n"
     if summary:
         summary = summary[:300]
@@ -86,7 +86,7 @@ def format_post(title, summary, link, source, is_translated=False):
         text += f"{summary[:last_dot+1] if last_dot > 100 else summary + '...'}\n\n"
     if link:
         text += f"🔗 <a href=\"{link}\">Читать полностью</a>\n"
-    text += f"📰 <i>Источник: {source}{' (перевод)' if is_translated else ''}</i>{SIGNATURE}"
+    text += f"📰 <i>Источник: {source}{' (перевод)' if translated else ''}</i>{SIGNATURE}"
     return text
 
 async def main():
