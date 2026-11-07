@@ -154,7 +154,7 @@ async def main():
 
     for i, item in enumerate(posts_to_publish):
         try:
-            await bot.send_message(chat_id=CHANNEL_ID, text=format_post(**item), parse_mode=ParseMode.HTML)
+            await bot.send_message(chat_id=CHANNEL_ID, text=format_post(item["title"], item["summary"], item["link"], item["source"], item["translated"]), parse_mode=ParseMode.HTML)
             posted_links.add(item["link"]) # ДОБАВЛЯЕМ В ПАМЯТЬ
             log.info(f"✅ Пост {i+1}: {item['title'][:40]}...")
             if i < len(posts_to_publish) - 1:
