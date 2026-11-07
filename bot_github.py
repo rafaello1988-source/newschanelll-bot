@@ -1,18 +1,10 @@
 """
-АВТОПОСТЕР НОВОСТЕЙ С ПАМЯТЬЮ (не постит дубликаты)
+АВТОПОСТЕР НОВОСТЕЙ С ПАМЯТЬЮ (через GitHub Cache)
 """
 
 import os, sys, subprocess, asyncio, logging, re, json, urllib.request, urllib.parse
 from datetime import datetime, timedelta, timezone
-
-# Автоустановка библиотек
-for pkg in ["feedparser==6.0.11", "python-telegram-bot==20.7"]:
-    try:
-        import feedparser
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", pkg, "-q"])
-        import feedparser
-
+import feedparser
 from telegram import Bot
 from telegram.constants import ParseMode
 
@@ -23,7 +15,9 @@ log = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_ID = os.environ.get("CHANNEL_ID")
 POSTS_PER_RUN = 3
-HOURS_AGO = 48  # Берем новости за последние 48 часов
+HOURS_AGO = 48  # Ищем новости за последние 48 часов
+POSTED_FILE = "posted_news.json"
+MAX_POSTED = 200 # Храним последние 200 ссылок
 
 RU_FEEDS = [
     ("Хабр: ИИ", "https://habr.com/ru/hub/artificial_intelligence/rss/"),
@@ -39,25 +33,30 @@ EN_FEEDS = [
 
 SIGNATURE = "\n\n🤖 Подписывайся: @newschanelll"
 
-# Файл с памятью о posted новостях
-POSTED_FILE = "posted_news.json"
-MAX_POSTED_LINKS = 200  # Храним последние 200 ссылок
+def load_posted():
+    """Загружает отправленные ссылки из кэшированного файла."""
+    if os.path.exists(POSTED_FILE):
+        try:
+            with open(POSTED_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                links = set(data.get("links", []))
+                log.info(f"📚 Загружено {len(links)} отправленных ссылок из памяти")
+                return links
+        except Exception as e:
+            log.warning(f"⚠️ Ошибка чтения файла памяти: {e}")
+    log.info("📚 Память пуста, начинаем с чистого листа")
+    return set()
 
-def load_posted_links():
-    """Загружает список отправленных ссылок."""
+def save_posted(links_set):
+    """Сохраняет ссылки в файл (GitHub Cache автоматически сохранит его после запуска)."""
     try:
-        # Пытаемся скачать файл из репозитория
-        import urllib.request
-        url = "https://raw.githubusercontent.com/rafaello1988-source/main/posted_news.json"
-        req = urllib.request.Request(url, headers={"User-Agent": "NewsBot/1.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            links = data.get("posted_links", [])
-            log.info(f"📚 Загружено {len(links)} отправленных ссылок")
-            return links
+        with open(POSTED_FILE, 'w', encoding='utf-8') as f:
+            # Оставляем только последние MAX_POSTED ссылок, чтобы файл не раздувался
+            links_list = list(links_set)[-MAX_POSTED:]
+            json.dump({"links": links_list}, f, ensure_ascii=False, indent=2)
+        log.info(f"💾 Память обновлена и сохранена ({len(links_list)} ссылок)")
     except Exception as e:
-        log.warning(f"⚠️ Не удалось загрузить posted_news.json: {e}")
-        return []
+        log.error(f"❌ Ошибка сохранения памяти: {e}")
 
 def clean_html(text):
     if not text:
@@ -70,15 +69,11 @@ def translate_to_ru(text):
         return ""
     try:
         url = "https://api.mymemory.translated.net/get"
-        params = urllib.parse.urlencode({
-            "q": text[:500],
-            "langpair": "en|ru"
-        })
+        params = urllib.parse.urlencode({"q": text[:500], "langpair": "en|ru"})
         req = urllib.request.Request(f"{url}?{params}", headers={"User-Agent": "NewsBot/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            translated = data.get("responseData", {}).get("translatedText", "")
-            return translated if translated else text
+            return data.get("responseData", {}).get("translatedText", text)
     except Exception as e:
         log.warning(f"⚠️ Ошибка перевода: {e}")
         return text
@@ -88,21 +83,10 @@ def format_post(title, summary, link, source, is_translated=False):
     if summary:
         summary = summary[:300]
         last_dot = summary.rfind('.')
-        if last_dot > 100:
-            summary = summary[:last_dot+1]
-        else:
-            summary += "..."
-        text += f"{summary}\n\n"
-    
+        text += f"{summary[:last_dot+1] if last_dot > 100 else summary + '...'}\n\n"
     if link:
         text += f"🔗 <a href=\"{link}\">Читать полностью</a>\n"
-    
-    if is_translated:
-        text += f" <i>Источник: {source} (перевод)</i>"
-    else:
-        text += f"📰 <i>Источник: {source}</i>"
-        
-    text += SIGNATURE
+    text += f"📰 <i>Источник: {source}{' (перевод)' if is_translated else ''}</i>{SIGNATURE}"
     return text
 
 async def main():
@@ -111,46 +95,33 @@ async def main():
         return
 
     bot = Bot(token=BOT_TOKEN)
-    posted_links = load_posted_links()  # Загружаем память
+    posted_links = load_posted()
     all_news = []
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=HOURS_AGO)
 
-    log.info(" Собираю русскоязычные новости...")
+    # 1. Русские новости
     for source_name, url in RU_FEEDS:
         try:
             feed = feedparser.parse(url)
             for entry in feed.entries:
-                # Проверяем время
                 published = entry.get('published_parsed')
                 if published:
                     pub_date = datetime(*published[:6], tzinfo=timezone.utc)
-                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=HOURS_AGO)
                     if pub_date < cutoff_time:
                         continue
-
-                title = clean_html(entry.get('title', ''))
-                summary = clean_html(entry.get('summary', ''))
+                
                 link = entry.get('link', '')
-                
-                # ПРОВЕРКА: не отправляли ли уже эту новость?
                 if link in posted_links:
-                    log.info(f"⏭️ Пропускаю (уже отправлено): {title[:50]}")
-                    continue
+                    continue # УЖЕ ОТПРАВЛЯЛИ! Пропускаем.
                 
+                title = clean_html(entry.get('title', ''))
                 if title and link:
-                    all_news.append({
-                        "title": title,
-                        "summary": summary,
-                        "link": link,
-                        "source": source_name,
-                        "translated": False,
-                        "priority": 1
-                    })
+                    all_news.append({"title": title, "summary": clean_html(entry.get('summary', '')), 
+                                     "link": link, "source": source_name, "translated": False, "priority": 1})
         except Exception as e:
             log.warning(f"⚠️ Ошибка {source_name}: {e}")
 
-    log.info(f"✅ Найдено {len(all_news)} новых русских новостей")
-
-    log.info(" Собираю англоязычные новости (с переводом)...")
+    # 2. Английские новости
     for source_name, url in EN_FEEDS:
         try:
             feed = feedparser.parse(url)
@@ -158,68 +129,41 @@ async def main():
                 published = entry.get('published_parsed')
                 if published:
                     pub_date = datetime(*published[:6], tzinfo=timezone.utc)
-                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=HOURS_AGO)
                     if pub_date < cutoff_time:
                         continue
-
-                title_en = clean_html(entry.get('title', ''))
-                summary_en = clean_html(entry.get('summary', ''))
+                
                 link = entry.get('link', '')
-                
-                # ПРОВЕРКА: не отправляли ли уже?
                 if link in posted_links:
-                    log.info(f"️ Пропускаю (уже отправлено): {title_en[:50]}")
-                    continue
+                    continue # УЖЕ ОТПРАВЛЯЛИ! Пропускаем.
                 
+                title_en = clean_html(entry.get('title', ''))
                 if title_en and link:
-                    title_ru = translate_to_ru(title_en)
-                    summary_ru = translate_to_ru(summary_en) if summary_en else ""
-                    
-                    all_news.append({
-                        "title": title_ru,
-                        "summary": summary_ru,
-                        "link": link,
-                        "source": source_name,
-                        "translated": True,
-                        "priority": 2
-                    })
+                    all_news.append({"title": translate_to_ru(title_en), 
+                                     "summary": translate_to_ru(clean_html(entry.get('summary', ''))), 
+                                     "link": link, "source": source_name, "translated": True, "priority": 2})
         except Exception as e:
             log.warning(f"⚠️ Ошибка {source_name}: {e}")
 
     if not all_news:
-        log.info("ℹ️ Новых новостей не найдено. Пропуск.")
+        log.info("ℹ️ Новых новостей не найдено. Бот завершает работу без постов.")
         return
 
     all_news.sort(key=lambda x: x["priority"])
     posts_to_publish = all_news[:POSTS_PER_RUN]
-    log.info(f" Публикую {len(posts_to_publish)} новостей...")
-
-    new_posted_links = posted_links.copy()
+    log.info(f"📝 Публикую {len(posts_to_publish)} новостей...")
 
     for i, item in enumerate(posts_to_publish):
-        text = format_post(item["title"], item["summary"], item["link"], item["source"], item["translated"])
         try:
-            await bot.send_message(
-                chat_id=CHANNEL_ID,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=False
-            )
-            # Добавляем ссылку в память
-            new_posted_links.append(item["link"])
-            # Оставляем только последние MAX_POSTED_LINKS
-            if len(new_posted_links) > MAX_POSTED_LINKS:
-                new_posted_links = new_posted_links[-MAX_POSTED_LINKS:]
-                
-            lang = "🇷🇺" if not item["translated"] else "🇬→🇷🇺"
-            log.info(f"✅ Пост {i+1}/{len(posts_to_publish)} {lang}: {item['title'][:40]}...")
-            
+            await bot.send_message(chat_id=CHANNEL_ID, text=format_post(**item), parse_mode=ParseMode.HTML)
+            posted_links.add(item["link"]) # ДОБАВЛЯЕМ В ПАМЯТЬ
+            log.info(f"✅ Пост {i+1}: {item['title'][:40]}...")
             if i < len(posts_to_publish) - 1:
                 await asyncio.sleep(3)
         except Exception as e:
-            log.error(f"❌ Ошибка отправки поста {i+1}: {e}")
+            log.error(f"❌ Ошибка отправки: {e}")
 
-    log.info("🎉 Готово! Бот завершил работу.")
+    save_posted(posted_links) # СОХРАНЯЕМ ПАМЯТЬ ДЛЯ СЛЕДУЮЩЕГО ЗАПУСКА
+    log.info("🎉 Готово!")
 
 if __name__ == "__main__":
     asyncio.run(main())
