@@ -1,5 +1,5 @@
 """
-АВТОПОСТЕР НОВОСТЕЙ С ПАМЯТЬЮ (GitHub Cache)
+АВТОПОСТЕР НОВОСТЕЙ С ПАМЯТЬЮ + РАСШИРЕННЫЕ ИСТОЧНИКИ
 """
 
 import os, sys, subprocess, asyncio, logging, re, json, urllib.request, urllib.parse
@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_ID = os.environ.get("CHANNEL_ID")
 POSTS_PER_RUN = 3
-HOURS_AGO = 48
+HOURS_AGO = 12  # Только свежие новости за последние 12 часов
 POSTED_FILE = "posted_news.json"
 MAX_POSTED = 200
 
@@ -23,11 +23,15 @@ RU_FEEDS = [
     ("Хабр: Нейросети", "https://habr.com/ru/hub/neural_networks/rss/"),
     ("Хабр: Machine Learning", "https://habr.com/ru/hub/machine_learning/rss/"),
     ("Naked Science", "https://naked-science.ru/feed"),
+    ("CNews", "https://www.cnews.ru/inc/rss/news.xml"),
+    ("iXBT", "https://www.ixbt.com/rss/allnews.xml"),
 ]
 
 EN_FEEDS = [
     ("TechCrunch AI", "https://techcrunch.com/category/artificial-intelligence/feed/"),
     ("The Verge AI", "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"),
+    ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/technology-lab"),
+    ("Wired AI", "https://www.wired.com/feed/tag/ai/latest/rss"),
 ]
 
 SIGNATURE = "\n\n🤖 Подписывайся: @newschanelll"
