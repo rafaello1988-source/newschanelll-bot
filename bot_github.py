@@ -27,6 +27,9 @@ RU_FEEDS = [
     ("Хабр: Нейросети", "https://habr.com/ru/hub/neural_networks/rss/"),
     ("Хабр: Machine Learning", "https://habr.com/ru/hub/machine_learning/rss/"),
     ("Naked Science", "https://naked-science.ru/feed"),
+    ("VC.ru Технологии", "https://vc.ru/services/rss"),  
+    ("TJournal ИИ", "https://tjournal.ru/rss/ai"),  
+]
 ]
 
 EN_FEEDS = [
