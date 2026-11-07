@@ -2,28 +2,30 @@ name: Пост новостей в канал
 
 on:
   schedule:
-    # Запуск 3 раза в день (время в UTC: 06:00 = 09:00 МСК, 11:00 = 14:00 МСК, 17:00 = 20:00 МСК)
-    - cron: '0 6  * * *'   
-    - cron: '0 11 * * *'   
-    - cron: '0 17 * * *'   
-  workflow_dispatch:       # Позволяет запускать вручную кнопкой
+    - cron: '0 6 * * *'   # 09:00 по Москве (UTC+3)
+    - cron: '0 11 * * *'  # 14:00 по Москве (UTC+3)
+    - cron: '0 17 * * *'  # 20:00 по Москве (UTC+3)
+  workflow_dispatch: # Позволяет запускать вручную кнопкой
 
 jobs:
-  publish:
+  post-news:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Установить Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
-      - name: Установить зависимости
-        run: pip install python-telegram-bot==20.7 feedparser==6.0.11
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser python-telegram-bot
 
-      - name: Опубликовать новости
+      - name: Run bot script
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
